@@ -58,7 +58,13 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
          terraform_version: 1.13.0
-          
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: terraform init
         run: terraform init
@@ -69,6 +75,7 @@ jobs:
         working-directory: ./Terraform/environment/dev
 
       - name: terraform plan
+        if: false
         run: terraform plan -out=plan.out
         working-directory: ./Terraform/environment/dev
 
