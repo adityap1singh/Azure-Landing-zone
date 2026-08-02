@@ -98,14 +98,14 @@ jobs:
 
       - name: terraform plan
         if: false
-        run: terraform plan -out=plan.out
+        run: terraform plan -out=tfplan
         working-directory: ./Terraform/environment/dev
 
       - name: Atifact upload
         uses: actions/upload-artifact@v4
         with:
             name: terraform-plan
-            path: ./Terraform/environment/dev/plan.out
+            path: ./Terraform/environment/dev/tfplan
 
 
 
