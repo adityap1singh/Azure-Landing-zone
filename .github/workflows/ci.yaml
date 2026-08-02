@@ -5,44 +5,36 @@ on:
     branches:
       - main
 
-    pull_request:
-      branches:
-        - main
-
 
 jobs:
-  Source code validation:
-    runs-on: ubuntu-latest
-
-    steps:
-
-      - name: checkout code
-        uses: actions/checkout@v4
-
-      - name: java installation
-        uses: actions/steup-java@v4
-        with:
-          distribustion: 'temuline'
-          version: '17'
-
-      - name: Terraform Installation
-        uses: hashicorp/setup-terraform@v2
-        with:
-        terraform-version: 1.6.0
-
-      - name: build app
-        run: mvn clean package
-
-      - name: test
-        run: mvn test
-
-      - name: sonar qube scan
-        uses: sonarsource/sonarcloud-github-action@v2
-
-
-    Container-validation:
+    source-code-validation:
       runs-on: ubuntu-latest
-      needs: Source code validation
+
+      steps:
+
+        - name: checkout code 
+          uses: actions/checkout@v4
+        
+        - name: java installation
+          uses: actions/setup-java@v4
+          with:
+           distribution: 'temurin'
+           java-version: '17'
+
+
+        - name: build app
+          run: mvn clean package
+
+        - name: test
+          run: mvn test
+
+        - name: sonar qube scan
+          uses: sonarsource/sonarcloud-github-action@v2
+
+
+    container-validation:
+      runs-on: ubuntu-latest
+      needs: source-code-validation
 
       steps:
 
@@ -60,35 +52,40 @@ jobs:
     
     Infrastructure-validation:
       runs-on: ubuntu-latest
-      needs: Container-validation
+      needs: container-validation
 
       steps:
         
-        - name: checkout code
-          uses: actions/checkout@v4
-          with:
-            working-directory: ./terraform/dev
+      - name: checkout code
+        uses: actions/checkout@v4
+       
 
-        - name: terraform init
-          run: terraform init
-          with:
-            working-directory: ./terraform/dev
+      - name: Terraform installation
+        uses: hashicorp/setup-terraform@v3
+        with:
+        terraform-version: 1.13.0
+          
 
-        - name: terraform validate
-          run: terraform validate
-          with:
-            working-directory: ./terraform/dev
+      - name: terraform init
+        run: terraform init
+        with:
+            working-directory: ./Terraform/environment/dev
 
-        - name: terraform plan
-          run: terraform plan
-          with:
-            working-directory: ./terraform/dev
+      - name: terraform validate
+        run: terraform validate
+        with:
+            working-directory: ./Terraform/environment/dev
 
-        - name: Atifact upload
-          uses: actions/upload-artifact@v3
-          with:
+      - name: terraform plan
+        run: terraform plan -out=plan.out
+        with:
+            working-directory: ./Terraform/environment/dev
+
+      - name: Atifact upload
+        uses: actions/upload-artifact@v3
+        with:
             name: terraform-plan
-            path: ./terraform/dev/plan.out
+            path: ./Terraform/environment/dev/plan.out
 
 
 
