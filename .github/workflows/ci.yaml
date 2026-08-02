@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
 
 jobs:
     source-code-validation:
@@ -73,6 +77,15 @@ jobs:
       - name: terraform validate
         run: terraform validate
         working-directory: ./Terraform/environment/dev
+
+      - name: Tflint
+        run: tflint
+        working-directory: ./Terraform/environment/dev
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./Terraform/environment/dev
 
       - name: terraform plan
         if: false
