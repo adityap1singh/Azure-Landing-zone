@@ -63,26 +63,23 @@ jobs:
       - name: Terraform installation
         uses: hashicorp/setup-terraform@v3
         with:
-        terraform-version: 1.13.0
+         terraform_version: 1.13.0
           
 
       - name: terraform init
         run: terraform init
-        with:
-            working-directory: ./Terraform/environment/dev
+        working-directory: ./Terraform/environment/dev
 
       - name: terraform validate
         run: terraform validate
-        with:
-            working-directory: ./Terraform/environment/dev
+        working-directory: ./Terraform/environment/dev
 
       - name: terraform plan
         run: terraform plan -out=plan.out
-        with:
-            working-directory: ./Terraform/environment/dev
+        working-directory: ./Terraform/environment/dev
 
       - name: Atifact upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
             name: terraform-plan
             path: ./Terraform/environment/dev/plan.out

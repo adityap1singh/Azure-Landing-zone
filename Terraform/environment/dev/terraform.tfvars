@@ -126,16 +126,4 @@ acr_details = {
   }
 }
 
-aks_details = {
-  aks1 = {
-    name                = "aks-cluster-dev"
-    location            = "eastus"
-    resource_group_name = "rg_rg_rg1"
-    dns_prefix          = "aks-dev"
-    node_pool_name      = "default"
-    node_count          = 2
-    vm_size             = "Standard_D2s_v3"
-    acr_id              = module.acr.acr["acr"].id
-  }
-}
 
