@@ -8,6 +8,11 @@ rg_details = {
     name     = "rg_rg_rg2"
     location = "westus"
   }
+
+  rg3 = {
+    name     = "rg_rg_rg3"
+    location = "centralindia"
+  }
 }
 
 
