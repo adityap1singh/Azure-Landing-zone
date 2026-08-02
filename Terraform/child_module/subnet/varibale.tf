@@ -1,0 +1,1 @@
+variable "sub_details" {}
