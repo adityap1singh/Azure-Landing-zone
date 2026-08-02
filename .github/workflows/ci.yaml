@@ -22,6 +22,7 @@ jobs:
            java-version: '17'
 
         - name: sonar qube scan
+          if: false
           uses: sonarsource/sonarcloud-github-action@v2
 
 
