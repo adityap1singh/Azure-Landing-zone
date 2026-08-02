@@ -79,6 +79,11 @@ jobs:
         run: terraform validate
         working-directory: ./Terraform/environment/dev
 
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+         tflint_version: latest
+
       - name: Tflint
         run: tflint
         working-directory: ./Terraform/environment/dev
