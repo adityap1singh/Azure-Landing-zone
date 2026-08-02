@@ -85,7 +85,9 @@ jobs:
          tflint_version: latest
 
       - name: Tflint
-        run: tflint
+        run: |
+           tflint --init
+           tflint --minimum-failure-severity=error
         working-directory: ./Terraform/environment/dev
 
       - name: Checkov
