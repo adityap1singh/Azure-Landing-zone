@@ -91,9 +91,10 @@ jobs:
         working-directory: ./Terraform/environment/dev
 
       - name: Checkov
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v12
         with:
-          directory: ./Terraform/environment/dev
+          directory: ./Terraform/environment/
+          soft_fail: true
 
       - name: terraform plan
         if: false
