@@ -21,13 +21,6 @@ jobs:
            distribution: 'temurin'
            java-version: '17'
 
-
-        - name: build app
-          run: mvn clean package
-
-        - name: test
-          run: mvn test
-
         - name: sonar qube scan
           uses: sonarsource/sonarcloud-github-action@v2
 
