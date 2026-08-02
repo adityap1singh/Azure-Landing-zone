@@ -1,0 +1,92 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+
+jobs:
+  Source code validation:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: java installation
+        uses: actions/steup-java@v4
+        with:
+          distribustion: 'temuline'
+          version: '17'
+
+      - name: Terraform Installation
+        uses: hashicorp/setup-terraform@v2
+        with:
+        terraform-version: 1.6.0
+
+      - name: build app
+        run: mvn clean package
+
+      - name: test
+        run: mvn test
+
+      - name: sonar qube scan
+        uses: sonarsource/sonarcloud-github-action@v2
+
+
+    Container-validation:
+      runs-on: ubuntu-latest
+      needs: Source code validation
+
+      steps:
+
+      - name: checkout code
+        uses: actions/checkout@v4
+
+      - name: docker build
+        run: docker build -t landingzone:latest .
+
+      - name: docker scan trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: landingzone:latest
+          severity: HIGH,CRITICAL
+    
+    Infrastructure-validation:
+      runs-on: ubuntu-latest
+      needs: Container-validation
+
+      steps:
+        
+        - name: checkout code
+          uses: actions/checkout@v4
+          with:
+            working-directory: ./terraform/dev
+
+        - name: terraform init
+          run: terraform init
+          with:
+            working-directory: ./terraform/dev
+
+        - name: terraform validate
+          run: terraform validate
+          with:
+            working-directory: ./terraform/dev
+
+        - name: terraform plan
+          run: terraform plan
+          with:
+            working-directory: ./terraform/dev
+
+        - name: Atifact upload
+          uses: actions/upload-artifact@v3
+          with:
+            name: terraform-plan
+            path: ./terraform/dev/plan.out
+
+
+
+        
+      
