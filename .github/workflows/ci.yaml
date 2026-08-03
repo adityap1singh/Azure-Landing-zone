@@ -64,7 +64,6 @@ jobs:
          terraform_version: 1.13.0
 
       - name: Azure Login
-        if: false
         uses: azure/login@v2
         with:
            client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -97,7 +96,6 @@ jobs:
           soft_fail: true
 
       - name: terraform plan
-        if: false
         run: terraform plan -out=tfplan
         working-directory: ./Terraform/environment/dev
 
