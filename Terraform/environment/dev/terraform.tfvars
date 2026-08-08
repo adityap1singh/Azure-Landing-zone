@@ -105,7 +105,7 @@ network_details = {
 
 virtual_machine = {
   vm = {
-    name = "VM-Linux-frontend"
+    name       = "VM-Linux-frontend"
     resource   = "rg_rg_rg1"
     vm_size    = "Standard_D2s_v3"
     location   = "eastus"
@@ -113,8 +113,8 @@ virtual_machine = {
     network_id = "nic1"
   }
 
-    vm1 = {
-    name = "VM-linux-backend"
+  vm1 = {
+    name       = "VM-linux-backend"
     resource   = "rg_rg_rg1"
     vm_size    = "Standard_D2s_v3"
     location   = "eastus"
