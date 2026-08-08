@@ -1,8 +1,8 @@
 name: CD Pipeline - GitOps & Security Scanning
 
 on:
-  pull-request:
-    branches:
+  pull_request:
+      branches:
       - main
 
 
