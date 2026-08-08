@@ -26,8 +26,7 @@ jobs:
 
         - name: sonar qube scan
           uses: SonarSource/sonarqube-scan-action@v8.2.1
-          with:
-            working-directory: ./Terraform/environment/dev
+          working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
         
 
     container-validation:
