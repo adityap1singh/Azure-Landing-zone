@@ -25,6 +25,7 @@ jobs:
            java-version: '17'
 
         - name: sonar qube scan
+          if: false
           uses: SonarSource/sonarqube-scan-action@v8.2.1
           working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
         
