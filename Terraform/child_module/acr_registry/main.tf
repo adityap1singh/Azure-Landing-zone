@@ -3,6 +3,8 @@ resource "azurerm_container_registry" "acr" {
   name                = each.value.name
   resource_group_name = each.value.resource_group_name
   location            = each.value.location
-  sku                 = "Basic"
-  admin_enabled       = false
+  sku                 = lookup(each.value, "sku", "Basic")
+  admin_enabled       = lookup(each.value, "admin_enabled", false)
+  tags                = lookup(each.value, "tags", null)
 }
+

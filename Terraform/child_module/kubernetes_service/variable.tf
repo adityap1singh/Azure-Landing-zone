@@ -1,4 +1,5 @@
 variable "aks_details" {
-  description = "Details of Azure Kubernetes Service clusters to create"
+  description = "Map of Azure Kubernetes Service (AKS) cluster configurations"
   type        = any
 }
+
