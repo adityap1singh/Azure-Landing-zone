@@ -6,6 +6,8 @@ variable "nsg_details" {}
 variable "pip_details" {}
 variable "virtual_machine" {}
 variable "acr_details" {}
+variable "aks_details" {}
 variable "container_details" {}
 variable "network_details" {}
+
 

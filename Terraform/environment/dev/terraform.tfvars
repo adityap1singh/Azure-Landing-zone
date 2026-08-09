@@ -124,11 +124,23 @@ virtual_machine = {
 }
 
 acr_details = {
-  acr = {
+  acr1 = {
     name                = "acraditya3"
     resource_group_name = "rg_rg_rg1"
     location            = "eastus"
+    sku                 = "Basic"
+    admin_enabled       = false
   }
 }
 
-
+aks_details = {
+  aks1 = {
+    name                = "aks-dev-cluster"
+    resource_group_name = "rg_rg_rg1"
+    location            = "eastus"
+    dns_prefix          = "aksdevcluster"
+    node_pool_name      = "default"
+    node_count          = 1
+    vm_size             = "Standard_D2s_v3"
+  }
+}
