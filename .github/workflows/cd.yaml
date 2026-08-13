@@ -16,9 +16,9 @@ env:
   RESOURCE_GROUP: 'rg_rg_rg1'
 
 jobs:
-  terraform-deploy:
-    name: Terraform Infrastructure
+  deploy:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

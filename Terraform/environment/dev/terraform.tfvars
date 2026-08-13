@@ -1,6 +1,6 @@
 rg_details = {
   rg1 = {
-    name     = "rg_rg_rg1"
+    name     = "rg_rg_rg1-aditya"
     location = "eastus"
   }
 
@@ -20,7 +20,7 @@ storage_details = {
   store1 = {
     name     = "storeaccount3458234"
     location = "eastus"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     tier     = "Standard"
     type     = "ZRS"
 
@@ -38,7 +38,7 @@ container_details = {
 vnet_details = {
   vnet1 = {
     name     = "vnet-dev"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     location = "eastus"
     space    = ["10.0.0.0/16"]
   }
@@ -55,21 +55,21 @@ vnet_details = {
 sub_details = {
   subn1 = {
     name     = "subnet-dev1"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     virtual  = "vnet-dev"
     address  = ["10.0.1.0/24"]
   }
 
   subn2 = {
     name     = "subnet-dev2"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     virtual  = "vnet-dev"
     address  = ["10.0.3.0/24"]
   }
 
   subn3 = {
     name     = "AzureBastionSubnet"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     virtual  = "vnet-dev"
     address  = ["10.0.7.0/24"]
   }
@@ -79,7 +79,7 @@ sub_details = {
 nsg_details = {
   nsg = {
     name     = "nsg-dev"
-    resource = "rg_rg_rg1"
+    resource = "rg_rg_rg1-aditya"
     location = "eastus"
   }
 }
@@ -88,7 +88,7 @@ pip_details = {
   pipm = {
     name       = "pip12"
     location   = "eastus"
-    resource   = "rg_rg_rg1"
+    resource   = "rg_rg_rg1-aditya"
     allocation = "Static"
   }
 }
@@ -97,7 +97,7 @@ network_details = {
   nic1 = {
     name      = "nic1"
     location  = "eastus"
-    resource  = "rg_rg_rg1"
+    resource  = "rg_rg_rg1-aditya"
     subnet_id = "subn1"
   }
 }
@@ -106,7 +106,7 @@ network_details = {
 virtual_machine = {
   vm = {
     name       = "VM-Linux-frontend"
-    resource   = "rg_rg_rg1"
+    resource   = "rg_rg_rg1-aditya"
     vm_size    = "Standard_D2s_v3"
     location   = "eastus"
     subnet_id  = "subnet-dev1"
@@ -115,7 +115,7 @@ virtual_machine = {
 
   vm1 = {
     name       = "VM-linux-backend"
-    resource   = "rg_rg_rg1"
+    resource   = "rg_rg_rg1-aditya"
     vm_size    = "Standard_D2s_v3"
     location   = "eastus"
     subnet_id  = "subnet-dev1"
@@ -126,7 +126,7 @@ virtual_machine = {
 acr_details = {
   acr1 = {
     name                = "acraditya3"
-    resource_group_name = "rg_rg_rg1"
+    resource_group_name = "rg_rg_rg1-aditya"
     location            = "eastus"
     sku                 = "Basic"
     admin_enabled       = false
@@ -134,13 +134,13 @@ acr_details = {
 }
 
 aks_details = {
-  aks1 = {
-    name                = "aks-dev-cluster"
-    resource_group_name = "rg_rg_rg1"
-    location            = "eastus"
-    dns_prefix          = "aksdevcluster"
-    node_pool_name      = "default"
-    node_count          = 1
-    vm_size             = "Standard_D2s_v3"
-  }
+aks1 = {
+  name                = "aks-dev-cluster"
+  resource_group_name = "rg_rg_rg1-aditya"
+  location            = "eastus"
+  dns_prefix          = "aksdevcluster"
+  node_pool_name      = "default"
+  node_count          = 1
+  vm_size             = "Standard_D2s_v3"
+}
 }
