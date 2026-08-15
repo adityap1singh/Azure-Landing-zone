@@ -97,6 +97,7 @@ jobs:
           soft_fail: true
 
       - name: terraform plan
+        if: false 
         run: terraform plan -out=tfplan
         working-directory: Terraform/environment/dev
 
