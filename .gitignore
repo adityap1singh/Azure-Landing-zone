@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+ai_gents/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -263,3 +264,5 @@ tfplan
 **/.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
+
+
