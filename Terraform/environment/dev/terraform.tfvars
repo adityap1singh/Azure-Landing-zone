@@ -98,6 +98,7 @@ pip_details = {
     resource   = "rg_rg_rg1-aditya"
     allocation = "Static"
 }
+}
 
 network_details = {
   nic1 = {
