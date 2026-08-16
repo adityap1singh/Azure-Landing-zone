@@ -57,12 +57,15 @@ module "acr" {
   acr_details = var.acr_details
 }
 
+module "aks" {
+  depends_on  = [module.resource, module.subnets, module.acr]
+  source      = "../../child_module/kubernetes_service"
+  aks_details = var.aks_details
+}
 
 module "network" {
   depends_on      = [module.resource, module.subnets]
   source          = "../../child_module/Network_interface"
   network_details = var.network_details
-  sub_details = module.subnets.subnet_ids
-
-
+  sub_details     = module.subnets.subnet_ids
 }

@@ -1,0 +1,5 @@
+google-genai
+requests
+python-dotenv
+azure-identity
+azure-mgmt-containerservice

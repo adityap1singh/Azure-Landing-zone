@@ -26,8 +26,9 @@ jobs:
 
         - name: sonar qube scan
           if: false
-          uses: sonarsource/sonarcloud-github-action@v2
-
+          uses: SonarSource/sonarqube-scan-action@v8.2.1
+          
+        
 
     container-validation:
       runs-on: ubuntu-latest
@@ -63,6 +64,7 @@ jobs:
          terraform_version: 1.13.0
 
       - name: Azure Login
+        if: false
         uses: azure/login@v2
         with:
            client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -71,11 +73,11 @@ jobs:
 
       - name: terraform init
         run: terraform init
-        working-directory: ./Terraform/environment/dev
+        working-directory: Terraform/environment/dev
 
       - name: terraform validate
         run: terraform validate
-        working-directory: ./Terraform/environment/dev
+        working-directory: Terraform/environment/dev
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
@@ -86,23 +88,24 @@ jobs:
         run: |
            tflint --init
            tflint --minimum-failure-severity=error
-        working-directory: ./Terraform/environment/dev
+        working-directory: Terraform/environment/dev
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: ./Terraform/environment/
+          directory: Terraform/environment/dev
           soft_fail: true
 
       - name: terraform plan
+        if: false 
         run: terraform plan -out=tfplan
-        working-directory: ./Terraform/environment/dev
+        working-directory: Terraform/environment/dev
 
       - name: Atifact upload
         uses: actions/upload-artifact@v4
         with:
             name: terraform-plan
-            path: ./Terraform/environment/dev/tfplan
+            path: Terraform/environment/dev
 
 
 
