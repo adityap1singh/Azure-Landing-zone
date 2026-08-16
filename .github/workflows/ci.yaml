@@ -63,6 +63,7 @@ jobs:
         with:
          terraform_version: 1.13.0
 
+
       - name: Azure Login
         if: false
         uses: azure/login@v2
@@ -73,11 +74,11 @@ jobs:
 
       - name: terraform init
         run: terraform init
-        working-directory: Terraform/environment/dev
+        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
 
       - name: terraform validate
         run: terraform validate
-        working-directory: Terraform/environment/dev
+        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
@@ -88,24 +89,24 @@ jobs:
         run: |
            tflint --init
            tflint --minimum-failure-severity=error
-        working-directory: Terraform/environment/dev
+        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: Terraform/environment/dev
+          directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
           soft_fail: true
 
       - name: terraform plan
         if: false 
         run: terraform plan -out=tfplan
-        working-directory: Terraform/environment/dev
+        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
 
       - name: Atifact upload
         uses: actions/upload-artifact@v4
         with:
             name: terraform-plan
-            path: Terraform/environment/dev
+            path: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
 
 
 
