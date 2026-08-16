@@ -91,6 +91,13 @@ pip_details = {
     resource   = "rg_rg_rg1-aditya"
     allocation = "Static"
   }
+
+    pipmd = {
+    name       = "pip1245"
+    location   = "eastus"
+    resource   = "rg_rg_rg1-aditya"
+    allocation = "Static"
+  }
 }
 
 network_details = {
