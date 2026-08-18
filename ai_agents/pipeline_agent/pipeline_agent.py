@@ -26,6 +26,13 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -48,66 +55,109 @@ def run_git(args, cwd=None):
     return subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
 
 
+def detect_repo_from_git() -> str:
+    """Auto-detect owner/repo from terminal git remote."""
+    try:
+        res = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True)
+        url = res.stdout.strip()
+        if "github.com" in url:
+            # handle https://github.com/owner/repo.git or git@github.com:owner/repo.git
+            clean = url.split("github.com")[-1].replace(":", "/").strip("/")
+            if clean.endswith(".git"):
+                clean = clean[:-4]
+            return clean
+    except Exception:
+        pass
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # PipelineAgent
 # ---------------------------------------------------------------------------
 class PipelineAgent:
     """
     Monitors GitHub Actions pipelines, auto-fixes failures with Gemini,
-    commits the fix, and re-triggers the run — looping until success.
+    commits the fix, and re-triggers the run via terminal git/gh CLI or API.
     """
 
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
-        self.github_token = get_env("GITHUB_TOKEN", required=True)
-        self.repo = get_env("GITHUB_REPOSITORY", required=True)
+        self.github_token = get_env("GITHUB_TOKEN", default="")
+        self.repo = get_env("GITHUB_REPOSITORY", default="") or detect_repo_from_git()
         self.max_retries = int(get_env("MAX_RETRIES", str(DEFAULT_MAX_RETRIES)))
-        self.gemini_client = genai.Client(api_key=get_env("GEMINI_API_KEY", required=True))
+        
+        try:
+            from llm_client import get_gemini_client
+            self.gemini_client = get_gemini_client()
+        except Exception:
+            self.gemini_client = genai.Client(api_key=get_env("GEMINI_API_KEY", required=True))
+
         self.repo_root = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
 
         self.headers = {
             "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {self.github_token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        if self.github_token:
+            self.headers["Authorization"] = f"Bearer {self.github_token}"
 
     # ------------------------------------------------------------------
-    # GitHub API helpers
+    # GitHub CLI / API helpers
     # ------------------------------------------------------------------
 
     def _gh_get(self, path: str) -> requests.Response:
-        url = f"https://api.github.com/repos/{self.repo}{path}"
-        return requests.get(url, headers=self.headers, timeout=30)
+        if self.github_token:
+            url = f"https://api.github.com/repos/{self.repo}{path}"
+            return requests.get(url, headers=self.headers, timeout=30)
+        return None
 
     def _gh_post(self, path: str, data: dict = None) -> requests.Response:
-        url = f"https://api.github.com/repos/{self.repo}{path}"
-        return requests.post(url, headers=self.headers, json=data or {}, timeout=30)
+        if self.github_token:
+            url = f"https://api.github.com/repos/{self.repo}{path}"
+            return requests.post(url, headers=self.headers, json=data or {}, timeout=30)
+        return None
 
     # ------------------------------------------------------------------
     # Step 1 — Get latest workflow run
     # ------------------------------------------------------------------
 
     def get_latest_run(self) -> dict | None:
-        """Return the most recent workflow run object, or None on error."""
-        print(f"\n[Pipeline Agent] Fetching latest workflow run for '{self.repo}'…")
-        resp = self._gh_get("/actions/runs")
-        if resp.status_code != 200:
-            print(f"  [ERROR] Could not list runs: {resp.status_code} — {resp.text[:300]}")
-            return None
+        """Return the most recent workflow run object, using terminal gh CLI or API."""
+        print(f"\n[Pipeline Agent] Fetching latest workflow run for '{self.repo}' via terminal gh CLI / API…")
 
-        runs = resp.json().get("workflow_runs", [])
-        if not runs:
-            print("  [INFO] No workflow runs found in this repository.")
-            return None
+        # 1. Try terminal gh CLI
+        try:
+            res = subprocess.run(
+                ["gh", "run", "list", "--limit", "1", "--repo", self.repo,
+                 "--json", "databaseId,status,conclusion,name,number,url"],
+                capture_output=True, text=True
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                runs = json.loads(res.stdout)
+                if runs:
+                    r = runs[0]
+                    return {
+                        "id": r.get("databaseId"),
+                        "name": r.get("name"),
+                        "run_number": r.get("number"),
+                        "status": r.get("status"),
+                        "conclusion": r.get("conclusion"),
+                        "html_url": r.get("url"),
+                    }
+        except (FileNotFoundError, Exception):
+            pass
 
-        run = runs[0]
-        print(
-            f"  Latest run #{run.get('run_number')} — '{run.get('name')}'"
-            f" | status={run.get('status')} | conclusion={run.get('conclusion')}"
-        )
-        return run
+        # 2. Fallback to API if token present
+        resp = self._gh_get("/actions/runs") if self.github_token else None
+        if resp and resp.status_code == 200:
+            runs = resp.json().get("workflow_runs", [])
+            if runs:
+                return runs[0]
+
+        print("  [INFO] No workflow runs found or gh CLI not logged in.")
+        return None
 
     # ------------------------------------------------------------------
     # Step 2 — Wait for a run to reach a terminal state
@@ -145,38 +195,51 @@ class PipelineAgent:
     # ------------------------------------------------------------------
 
     def get_failure_logs(self, run_id: int) -> str:
-        """Return concatenated log text from all failed jobs in the run."""
-        print(f"\n[Pipeline Agent] Collecting failure logs from run #{run_id}…")
-        resp = self._gh_get(f"/actions/runs/{run_id}/jobs")
-        if resp.status_code != 200:
-            return f"Could not fetch jobs: {resp.text}"
+        """Return concatenated log text from all failed jobs in the run via terminal gh CLI or API."""
+        print(f"\n[Pipeline Agent] Collecting failure logs from run #{run_id} via terminal gh CLI / API…")
 
-        jobs = resp.json().get("jobs", [])
-        failed_logs = []
-
-        for job in jobs:
-            if job.get("conclusion") != "failure":
-                continue
-            job_id = job["id"]
-            job_name = job["name"]
-            print(f"  Failed job: '{job_name}' (id={job_id})")
-
-            log_resp = requests.get(
-                f"https://api.github.com/repos/{self.repo}/actions/jobs/{job_id}/logs",
-                headers=self.headers,
-                timeout=60,
+        # 1. Try terminal gh CLI
+        try:
+            res = subprocess.run(
+                ["gh", "run", "view", str(run_id), "--log", "--repo", self.repo],
+                capture_output=True, text=True
             )
-            if log_resp.status_code == 200:
-                lines = log_resp.text.splitlines()
-                # Keep last 2000 lines to stay within prompt limits
-                truncated = "\n".join(lines[-2000:])
-                failed_logs.append(f"=== Job: {job_name} ===\n{truncated}")
-            else:
-                failed_logs.append(
-                    f"=== Job: {job_name} ===\n[Logs unavailable: {log_resp.status_code}]"
-                )
+            if res.returncode == 0 and res.stdout.strip():
+                lines = res.stdout.splitlines()
+                return "\n".join(lines[-2000:])
+        except (FileNotFoundError, Exception):
+            pass
 
-        return "\n\n".join(failed_logs) if failed_logs else "No failed jobs found."
+        # 2. Fallback to API if token present
+        if self.github_token:
+            resp = self._gh_get(f"/actions/runs/{run_id}/jobs")
+            if resp and resp.status_code == 200:
+                jobs = resp.json().get("jobs", [])
+                failed_logs = []
+                for job in jobs:
+                    if job.get("conclusion") != "failure":
+                        continue
+                    job_id = job["id"]
+                    job_name = job["name"]
+                    print(f"  Failed job: '{job_name}' (id={job_id})")
+
+                    log_resp = requests.get(
+                        f"https://api.github.com/repos/{self.repo}/actions/jobs/{job_id}/logs",
+                        headers=self.headers,
+                        timeout=60,
+                    )
+                    if log_resp.status_code == 200:
+                        lines = log_resp.text.splitlines()
+                        truncated = "\n".join(lines[-2000:])
+                        failed_logs.append(f"=== Job: {job_name} ===\n{truncated}")
+                    else:
+                        failed_logs.append(
+                            f"=== Job: {job_name} ===\n[Logs unavailable: {log_resp.status_code}]"
+                        )
+                if failed_logs:
+                    return "\n\n".join(failed_logs)
+
+        return "No failed job logs available."
 
     # ------------------------------------------------------------------
     # Step 4 — Gemini diagnosis + file corrections
@@ -248,11 +311,8 @@ Rules:
 
         print("\n[Pipeline Agent] Consulting Gemini for diagnosis and fix…")
         try:
-            response = self.gemini_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-            )
-            raw = response.text.strip()
+            from llm_client import generate_text_with_retry
+            raw = generate_text_with_retry(self.gemini_client, prompt)
 
             # Extract the JSON block
             if "```json" in raw:
@@ -342,52 +402,78 @@ Rules:
 
     def rerun_workflow(self, run_id: int) -> bool:
         """
-        Ask GitHub to re-run all failed jobs in the given run.
-        Returns True if the API call succeeds.
+        Ask GitHub to re-run all failed jobs in the given run via terminal gh CLI or API.
         """
         if self.dry_run:
             print(f"  [DRY RUN] Would re-trigger run #{run_id}.")
             return True
 
-        print(f"\n[Pipeline Agent] Re-triggering run #{run_id} via GitHub API…")
-        resp = self._gh_post(f"/actions/runs/{run_id}/rerun-failed-jobs")
-        if resp.status_code in (201, 204):
-            print(f"  ✓ Re-run requested for run #{run_id}.")
-            return True
-        else:
-            print(f"  [ERROR] Re-run API returned {resp.status_code}: {resp.text[:300]}")
-            return False
+        print(f"\n[Pipeline Agent] Re-triggering run #{run_id} via terminal gh CLI / API…")
+        
+        # 1. Try terminal gh CLI
+        try:
+            res = subprocess.run(
+                ["gh", "run", "rerun", str(run_id), "--failed", "--repo", self.repo],
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                print(f"  ✓ Re-run requested via terminal gh CLI for run #{run_id}.")
+                return True
+        except (FileNotFoundError, Exception):
+            pass
+
+        # 2. Fallback to API if token present
+        if self.github_token:
+            resp = self._gh_post(f"/actions/runs/{run_id}/rerun-failed-jobs")
+            if resp and resp.status_code in (201, 204):
+                print(f"  ✓ Re-run requested via API for run #{run_id}.")
+                return True
+
+        print(f"  [ERROR] Could not re-trigger run #{run_id}.")
+        return False
 
     # ------------------------------------------------------------------
     # Step 8 — Open a PR (optional, after all retries exhausted)
     # ------------------------------------------------------------------
 
     def open_pull_request(self, branch: str, run_id: int, diagnosis: str):
-        """Open a GitHub Pull Request from the fix branch into main."""
+        """Open a GitHub Pull Request from the fix branch into main via terminal gh CLI or API."""
         if self.dry_run or not branch:
             return
 
-        url = f"https://api.github.com/repos/{self.repo}/pulls"
+        title = f"🤖 Auto-Fix: Pipeline Failure in Run #{run_id}"
         body = (
             f"This PR was auto-generated by the **Pipeline Agent** to fix "
             f"failures in run #{run_id}.\n\n"
             f"**Diagnosis:**\n{diagnosis}\n\n"
             f"> Auto-fix applied — please review before merging."
         )
-        data = {
-            "title": f"🤖 Auto-Fix: Pipeline Failure in Run #{run_id}",
-            "body": body,
-            "head": branch,
-            "base": "main",
-        }
-        resp = requests.post(url, headers=self.headers, json=data, timeout=30)
-        if resp.status_code == 201:
-            pr_url = resp.json().get("html_url")
-            print(f"  ✓ Pull Request created: {pr_url}")
-        elif resp.status_code == 422:
-            print("  [INFO] PR already exists for this branch — skipping.")
-        else:
-            print(f"  [WARN] PR creation returned {resp.status_code}: {resp.text[:300]}")
+
+        # 1. Try terminal gh CLI
+        try:
+            res = subprocess.run(
+                ["gh", "pr", "create", "--title", title, "--body", body,
+                 "--head", branch, "--base", "main", "--repo", self.repo],
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                print(f"  ✓ Pull Request created via terminal gh CLI: {res.stdout.strip()}")
+                return
+        except (FileNotFoundError, Exception):
+            pass
+
+        # 2. Fallback to API if token present
+        if self.github_token:
+            url = f"https://api.github.com/repos/{self.repo}/pulls"
+            data = {"title": title, "body": body, "head": branch, "base": "main"}
+            resp = requests.post(url, headers=self.headers, json=data, timeout=30)
+            if resp.status_code == 201:
+                pr_url = resp.json().get("html_url")
+                print(f"  ✓ Pull Request created via API: {pr_url}")
+            elif resp.status_code == 422:
+                print("  [INFO] PR already exists for this branch — skipping.")
+            else:
+                print(f"  [WARN] PR creation returned {resp.status_code}: {resp.text[:300]}")
 
     # ------------------------------------------------------------------
     # Main orchestration loop

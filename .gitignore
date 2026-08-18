@@ -25,7 +25,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-ai_gents/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -226,43 +225,60 @@ terraform.tfstate
 .terraform.lock.hcl
 
 
-# ── AI Agents ──────────────────────────────────────────────────────────────────
+# ── AI Agents & Dynamic Scaffolding ───────────────────────────────────────────
 # Secrets & credentials — NEVER commit these
 ai_agents/.env
 ai_agents/**/.env
+ai_agents/.env.*
+ai_agents/**/.env.*
+.env
+.env.*
 
-# Python bytecode caches inside ai_agents
+# Python bytecode & cache extensions inside ai_agents
 ai_agents/__pycache__/
 ai_agents/**/__pycache__/
 ai_agents/*.pyc
 ai_agents/**/*.pyc
+ai_agents/*.pyo
+ai_agents/**/*.pyo
+ai_agents/*.pyd
+ai_agents/**/*.pyd
 
-# Session logs (contain execution history and may hold sensitive output)
+# Session logs & terminal runs
 ai_agents/session_log*.json
+ai_agents/**/session_log*.json
+ai_agents/*.log
+ai_agents/**/*.log
 ai_agents/agent_logs/
 
-# Scratch / temp files
+# Scratch & temporary workspace artifacts
 ai_agents/scratch.py
 ai_agents/scratch_*.py
 ai_agents/**/*.tmp
+ai_agents/**/*.bak
 
-# Auto-generated Kubernetes manifests (created by k8s_acr_agent when none exist)
-k8s/.generated
+# Auto-generated application scaffolds & test manifests
+apps/
+apps/**
+k8s/*-deployment.yaml
 
-# Virtual environments that might be created inside ai_agents
+# Virtual environments
 ai_agents/.venv/
 ai_agents/venv/
+.venv/
+venv/
 
-# ── Terraform ──────────────────────────────────────────────────────────────────
+# ── Terraform Artifacts & State ────────────────────────────────────────────────
 .terraform/
 **/.terraform/
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
 tfplan
 *.tfplan
 .terraform.lock.hcl
 **/.terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.backup
+crash.log
+crash.*.log
 
 
