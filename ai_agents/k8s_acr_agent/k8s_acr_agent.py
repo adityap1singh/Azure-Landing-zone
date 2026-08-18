@@ -44,6 +44,13 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -132,15 +139,26 @@ def az_login(dry_run: bool) -> bool:
 # ---------------------------------------------------------------------------
 
 class AcrPhase:
-    def __init__(self, dry_run: bool, client: genai.Client, max_retries: int):
+    def __init__(
+        self,
+        dry_run: bool,
+        client: genai.Client,
+        max_retries: int,
+        image_name: str = None,
+        image_tag: str = None,
+        build_context_dir: Path = None,
+        acr_name: str = None,
+        resource_group: str = None,
+    ):
         self.dry_run = dry_run
         self.client = client
         self.max_retries = max_retries
-        self.acr_name = get_env("ACR_NAME", required=True)
+        self.acr_name = acr_name or get_env("ACR_NAME", required=True)
         self.acr_login_server = get_env("ACR_LOGIN_SERVER")
-        self.image_name = get_env("IMAGE_NAME", "app")
-        self.image_tag = get_env("IMAGE_TAG", "latest")
-        self.resource_group = get_env("RESOURCE_GROUP", required=True)
+        self.image_name = image_name or get_env("IMAGE_NAME", "app")
+        self.image_tag = image_tag or get_env("IMAGE_TAG", "latest")
+        self.resource_group = resource_group or get_env("RESOURCE_GROUP", required=True)
+        self.build_context_dir = build_context_dir or REPO_ROOT
 
     @property
     def full_image_ref(self) -> str:
@@ -153,7 +171,7 @@ class AcrPhase:
             "--registry", self.acr_name,
             "--image", f"{self.image_name}:{self.image_tag}",
             "--resource-group", self.resource_group,
-            str(REPO_ROOT),   # Build context = repo root (Dockerfile is there)
+            str(self.build_context_dir),   # Build context (app folder or repo root)
         ]
 
     def _ask_gemini_fix(self, error_output: str) -> dict | None:
@@ -198,8 +216,8 @@ Respond ONLY with a JSON block inside ```json ... ```:
 - If no changes are needed (transient error), set corrections to [] and az_command_override to [].
 """
         try:
-            resp = self.client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-            raw = resp.text.strip()
+            from llm_client import generate_text_with_retry
+            raw = generate_text_with_retry(self.client, prompt)
             if "```json" in raw:
                 json_str = raw.split("```json")[1].split("```")[0].strip()
             elif "```" in raw:
@@ -372,8 +390,8 @@ Generate a production-ready Kubernetes Deployment and Service manifest for the f
 Return ONLY a valid YAML inside a ```yaml block. Combine all resources with --- separators.
 """
     try:
-        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        raw = resp.text.strip()
+        from llm_client import generate_text_with_retry
+        raw = generate_text_with_retry(client, prompt)
         if "```yaml" in raw:
             yaml_content = raw.split("```yaml")[1].split("```")[0].strip()
         elif "```" in raw:
@@ -512,8 +530,8 @@ Respond ONLY with a JSON block inside ```json ... ```:
 - If the issue is transient (e.g. image pull backoff that just needs time), set corrections to [].
 """
         try:
-            resp = self.client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-            raw = resp.text.strip()
+            from llm_client import generate_text_with_retry
+            raw = generate_text_with_retry(self.client, prompt)
             if "```json" in raw:
                 json_str = raw.split("```json")[1].split("```")[0].strip()
             elif "```" in raw:
@@ -616,6 +634,97 @@ Respond ONLY with a JSON block inside ```json ... ```:
         print("  [INFO] External IP not yet assigned — check `kubectl get svc` later.")
 
 
+class K8sAcrAgent:
+    """
+    Programmatic interface for the Orchestrator and external tools.
+    """
+
+    def __init__(self, dry_run: bool = False):
+        self.dry_run = dry_run
+        self.client = get_gemini_client()
+
+    def run(self, args: dict = None) -> bool:
+        args = args or {}
+        dry_run = args.get("dry_run", self.dry_run)
+        max_retries = int(args.get("max_retries", DEFAULT_MAX_RETRIES))
+        skip_build = args.get("skip_build", False)
+        skip_deploy = args.get("skip_deploy", False)
+
+        namespace = args.get("namespace") or get_env("K8S_NAMESPACE", "default")
+        image_name = args.get("image_name") or get_env("IMAGE_NAME", "app")
+        image_tag = args.get("image_tag") or get_env("IMAGE_TAG", "latest")
+        acr_name = args.get("acr_name") or get_env("ACR_NAME", required=True)
+        acr_login_server = args.get("acr_login_server") or get_env("ACR_LOGIN_SERVER") or f"{acr_name}.azurecr.io"
+        full_image_ref = f"{acr_login_server}/{image_name}:{image_tag}"
+        
+        build_context_dir = Path(args["build_context_dir"]) if args.get("build_context_dir") else (
+            Path(args["app_dir"]) if args.get("app_dir") else REPO_ROOT
+        )
+
+        print("=" * 65)
+        print("  K8s + ACR Agent — Build, Push & Deploy")
+        print(f"  ACR Name  : {acr_name}")
+        print(f"  Image     : {full_image_ref}")
+        print(f"  Build Dir : {build_context_dir}")
+        print(f"  AKS       : {get_env('AKS_CLUSTER_NAME', 'N/A')}")
+        print(f"  Namespace : {namespace}")
+        print(f"  Dry Run   : {dry_run}")
+        print(f"  MaxRetries: {max_retries}")
+        print("=" * 65)
+
+        # Azure login
+        if not az_login(dry_run):
+            return False
+
+        # Phase 1 — ACR Build & Push
+        if not skip_build:
+            acr_phase = AcrPhase(
+                dry_run=dry_run,
+                client=self.client,
+                max_retries=max_retries,
+                image_name=image_name,
+                image_tag=image_tag,
+                build_context_dir=build_context_dir,
+                acr_name=acr_name,
+            )
+            success = acr_phase.run()
+            if not success and not dry_run:
+                print("\n[FATAL] ACR build failed. Cannot deploy without a valid image.")
+                return False
+
+        if skip_deploy:
+            print("\n[INFO] --skip-deploy flag set. Skipping Kubernetes deployment.")
+            print("[K8s/ACR Agent] Done.")
+            return True
+
+        # Phase 2 — AKS Credentials
+        if not get_aks_credentials(dry_run):
+            return False
+
+        # Phase 3 — Manifests
+        manifest_files = ensure_manifests(
+            image_name=image_name,
+            full_image_ref=full_image_ref,
+            namespace=namespace,
+            client=self.client,
+            dry_run=dry_run,
+        )
+
+        # Phase 4 — Deploy + Error-Rectify-Rerun
+        k8s_phase = K8sDeployPhase(
+            manifest_files=manifest_files,
+            namespace=namespace,
+            image_name=image_name,
+            full_image_ref=full_image_ref,
+            dry_run=dry_run,
+            client=self.client,
+            max_retries=max_retries,
+        )
+        success = k8s_phase.run()
+        print("\n[K8s/ACR Agent] Done.")
+        return success
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -637,74 +746,41 @@ def main():
         help="Skip Kubernetes deployment (only build & push to ACR)"
     )
     parser.add_argument(
+        "--image-name", default=None,
+        help="Target container image name (overrides .env)"
+    )
+    parser.add_argument(
+        "--image-tag", default=None,
+        help="Target container image tag (overrides .env)"
+    )
+    parser.add_argument(
+        "--build-dir", default=None,
+        help="Custom build context directory containing Dockerfile"
+    )
+    parser.add_argument(
+        "--namespace", default=None,
+        help="Kubernetes namespace (default: default)"
+    )
+    parser.add_argument(
         "--max-retries", type=int, default=DEFAULT_MAX_RETRIES,
         help=f"Max error-rectify-rerun cycles (default: {DEFAULT_MAX_RETRIES})"
     )
     args = parser.parse_args()
 
-    namespace = get_env("K8S_NAMESPACE", "default")
-    image_name = get_env("IMAGE_NAME", "app")
-    image_tag = get_env("IMAGE_TAG", "latest")
-    acr_name = get_env("ACR_NAME", required=True)
-    acr_login_server = get_env("ACR_LOGIN_SERVER") or f"{acr_name}.azurecr.io"
-    full_image_ref = f"{acr_login_server}/{image_name}:{image_tag}"
-
-    print("=" * 65)
-    print("  K8s + ACR Agent — Build, Push & Deploy")
-    print(f"  ACR Name  : {acr_name}")
-    print(f"  Image     : {full_image_ref}")
-    print(f"  AKS       : {get_env('AKS_CLUSTER_NAME', 'N/A')}")
-    print(f"  Namespace : {namespace}")
-    print(f"  Dry Run   : {args.dry_run}")
-    print(f"  MaxRetries: {args.max_retries}")
-    print("=" * 65)
-
-    client = get_gemini_client()
-
-    # Azure login
-    if not az_login(args.dry_run):
-        sys.exit(1)
-
-    # Phase 1 — ACR Build & Push
-    if not args.skip_build:
-        acr_phase = AcrPhase(args.dry_run, client, args.max_retries)
-        success = acr_phase.run()
-        if not success and not args.dry_run:
-            print("\n[FATAL] ACR build failed. Cannot deploy without a valid image.")
-            sys.exit(1)
-
-    if args.skip_deploy:
-        print("\n[INFO] --skip-deploy flag set. Skipping Kubernetes deployment.")
-        print("[K8s/ACR Agent] Done.")
-        return
-
-    # Phase 2 — AKS Credentials
-    if not get_aks_credentials(args.dry_run):
-        sys.exit(1)
-
-    # Phase 3 — Manifests
-    manifest_files = ensure_manifests(
-        image_name=image_name,
-        full_image_ref=full_image_ref,
-        namespace=namespace,
-        client=client,
-        dry_run=args.dry_run,
-    )
-
-    # Phase 4 — Deploy + Error-Rectify-Rerun
-    k8s_phase = K8sDeployPhase(
-        manifest_files=manifest_files,
-        namespace=namespace,
-        image_name=image_name,
-        full_image_ref=full_image_ref,
-        dry_run=args.dry_run,
-        client=client,
-        max_retries=args.max_retries,
-    )
-    k8s_phase.run()
-
-    print("\n[K8s/ACR Agent] Done.")
+    agent = K8sAcrAgent(dry_run=args.dry_run)
+    success = agent.run({
+        "dry_run": args.dry_run,
+        "skip_build": args.skip_build,
+        "skip_deploy": args.skip_deploy,
+        "image_name": args.image_name,
+        "image_tag": args.image_tag,
+        "build_context_dir": args.build_dir,
+        "namespace": args.namespace,
+        "max_retries": args.max_retries,
+    })
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
     main()
+

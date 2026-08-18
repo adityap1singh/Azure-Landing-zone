@@ -36,6 +36,13 @@ from google import genai
 from dotenv import load_dotenv
 
 # ── Bootstrap ────────────────────────────────────────────────────────────────
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 load_dotenv(dotenv_path=Path(__file__).parent / '.env')
 
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -59,10 +66,11 @@ def _gemini_client() -> genai.Client:
 # ── Session Logger ────────────────────────────────────────────────────────────
 
 class SessionLogger:
-    """Append-only JSON log for every orchestrator action."""
+    """Append-only JSON log for every orchestrator action with live event streaming."""
 
-    def __init__(self, path: Path = LOG_FILE):
+    def __init__(self, path: Path = LOG_FILE, event_listener=None):
         self.path = path
+        self.event_listener = event_listener
         self._entries: list[dict] = []
 
     def log(self, event: str, detail: Any = None, status: str = "INFO"):
@@ -75,6 +83,11 @@ class SessionLogger:
         self._entries.append(entry)
         icon = {"INFO": "ℹ", "OK": "✅", "FAIL": "❌", "WARN": "⚠️"}.get(status, "•")
         print(f"  {icon} [{status}] {event}")
+        if self.event_listener:
+            try:
+                self.event_listener({"type": "log", "entry": entry})
+            except Exception:
+                pass
 
     def save(self):
         existing = []
@@ -105,15 +118,18 @@ class GitHubCLI:
         self._check_gh_installed()
 
     def _check_gh_installed(self):
-        result = subprocess.run(
-            ["gh", "--version"], capture_output=True, text=True
-        )
-        if result.returncode != 0:
+        try:
+            result = subprocess.run(
+                ["gh", "--version"], capture_output=True, text=True
+            )
+            self._available = (result.returncode == 0)
+            if not self._available:
+                print("  [WARN] `gh` CLI not found. Install from https://cli.github.com/")
+                print("         GitHub operations will be skipped.")
+        except (FileNotFoundError, Exception):
             print("  [WARN] `gh` CLI not found. Install from https://cli.github.com/")
             print("         GitHub operations will be skipped.")
             self._available = False
-        else:
-            self._available = True
 
     def _run(self, args: list[str], capture: bool = True) -> tuple[int, str, str]:
         if not self._available:
@@ -210,8 +226,7 @@ class GitHubCLI:
 
 class AgentRunner:
     """
-    Runs each specialised agent in-process (import + call) or as a subprocess
-    depending on whether the agent exposes a programmatic API.
+    Runs each specialised agent in-process with shared context propagation.
     """
 
     def __init__(self, logger: SessionLogger, shared_ctx: dict):
@@ -221,9 +236,10 @@ class AgentRunner:
     def _import_agent(self, agent_id: str):
         """Dynamically import an agent module from the agents directory."""
         agent_paths = {
-            "pipeline_agent": AGENTS_DIR / "pipeline_agent" / "pipeline_agent.py",
+            "app_agent":       AGENTS_DIR / "app_agent"       / "app_agent.py",
+            "pipeline_agent":  AGENTS_DIR / "pipeline_agent"  / "pipeline_agent.py",
             "terraform_agent": AGENTS_DIR / "terraform_agent" / "terraform_agent.py",
-            "k8s_acr_agent":  AGENTS_DIR / "k8s_acr_agent"  / "k8s_acr_agent.py",
+            "k8s_acr_agent":   AGENTS_DIR / "k8s_acr_agent"   / "k8s_acr_agent.py",
         }
         path = agent_paths.get(agent_id)
         if not path or not path.exists():
@@ -234,12 +250,30 @@ class AgentRunner:
         spec.loader.exec_module(mod)
         return mod
 
+    def run_app_agent(self, args: dict) -> bool:
+        self.logger.log("Running App Scaffolder / Manifest Agent", args)
+        try:
+            mod = self._import_agent("app_agent")
+            agent = mod.AppAgent(dry_run=args.get("dry_run", False))
+            merged_args = {**self.ctx, **args}
+            result = agent.run(merged_args)
+            if isinstance(result, dict) and result.get("success"):
+                # Save output context so subsequent agents (ACR, K8s, Terraform) have it
+                self.ctx.update(result)
+                self.logger.log("App Agent complete", detail=result, status="OK")
+                return True
+            self.logger.log("App Agent returned unsuccessful status", detail=result, status="FAIL")
+            return False
+        except Exception as exc:
+            self.logger.log(f"App Agent error: {exc}", status="FAIL")
+            return False
+
     def run_pipeline_agent(self, args: dict) -> bool:
         self.logger.log("Running Pipeline Agent", args)
         try:
             mod = self._import_agent("pipeline_agent")
             agent = mod.PipelineAgent(dry_run=args.get("dry_run", False))
-            agent.max_retries = args.get("max_retries", 3)
+            agent.max_retries = int(args.get("max_retries", 3))
             agent.run()
             self.logger.log("Pipeline Agent complete", status="OK")
             return True
@@ -251,23 +285,28 @@ class AgentRunner:
         self.logger.log("Running Terraform Agent", args)
         try:
             mod = self._import_agent("terraform_agent")
-            # Patch sys.argv so argparse inside the agent gets the right flags
-            original_argv = sys.argv
-            sys.argv = [
-                "terraform_agent.py",
-                "--env", args.get("env", "dev"),
-                "--max-retries", str(args.get("max_retries", 3)),
-            ]
-            if args.get("dry_run"):
-                sys.argv.append("--dry-run")
-            if args.get("audit_only"):
-                sys.argv.append("--audit-only")
-            try:
-                mod.main()
-            finally:
-                sys.argv = original_argv
-            self.logger.log("Terraform Agent complete", status="OK")
-            return True
+            merged_args = {**self.ctx, **args}
+            if hasattr(mod, "TerraformAgent"):
+                agent = mod.TerraformAgent(dry_run=args.get("dry_run", False))
+                ok = agent.run(merged_args)
+            else:
+                original_argv = sys.argv
+                sys.argv = [
+                    "terraform_agent.py",
+                    "--env", merged_args.get("env", "dev"),
+                    "--max-retries", str(merged_args.get("max_retries", 3)),
+                ]
+                if merged_args.get("dry_run"):
+                    sys.argv.append("--dry-run")
+                if merged_args.get("audit_only"):
+                    sys.argv.append("--audit-only")
+                try:
+                    mod.main()
+                    ok = True
+                finally:
+                    sys.argv = original_argv
+            self.logger.log("Terraform Agent complete", status="OK" if ok else "FAIL")
+            return ok
         except SystemExit as exc:
             ok = exc.code == 0
             self.logger.log("Terraform Agent exited", detail=str(exc.code),
@@ -281,20 +320,33 @@ class AgentRunner:
         self.logger.log("Running K8s/ACR Agent", args)
         try:
             mod = self._import_agent("k8s_acr_agent")
-            original_argv = sys.argv
-            sys.argv = ["k8s_acr_agent.py", "--max-retries", str(args.get("max_retries", 3))]
-            if args.get("dry_run"):
-                sys.argv.append("--dry-run")
-            if args.get("skip_build"):
-                sys.argv.append("--skip-build")
-            if args.get("skip_deploy"):
-                sys.argv.append("--skip-deploy")
-            try:
-                mod.main()
-            finally:
-                sys.argv = original_argv
-            self.logger.log("K8s/ACR Agent complete", status="OK")
-            return True
+            # Automatically feed context from AppAgent if not explicitly passed
+            merged_args = {
+                "image_name": self.ctx.get("app_name") or "app",
+                "build_context_dir": self.ctx.get("app_dir"),
+                "port": self.ctx.get("port"),
+                "namespace": self.ctx.get("namespace", "default"),
+                **args,
+            }
+            if hasattr(mod, "K8sAcrAgent"):
+                agent = mod.K8sAcrAgent(dry_run=args.get("dry_run", False))
+                ok = agent.run(merged_args)
+            else:
+                original_argv = sys.argv
+                sys.argv = ["k8s_acr_agent.py", "--max-retries", str(args.get("max_retries", 3))]
+                if args.get("dry_run"):
+                    sys.argv.append("--dry-run")
+                if args.get("skip_build"):
+                    sys.argv.append("--skip-build")
+                if args.get("skip_deploy"):
+                    sys.argv.append("--skip-deploy")
+                try:
+                    mod.main()
+                    ok = True
+                finally:
+                    sys.argv = original_argv
+            self.logger.log("K8s/ACR Agent complete", status="OK" if ok else "FAIL")
+            return ok
         except SystemExit as exc:
             ok = exc.code == 0
             self.logger.log("K8s/ACR Agent exited", detail=str(exc.code),
@@ -308,9 +360,10 @@ class AgentRunner:
         agent = step.get("agent")
         step_args = step.get("args", {})
         dispatch = {
-            "pipeline_agent": self.run_pipeline_agent,
+            "app_agent":       self.run_app_agent,
+            "pipeline_agent":  self.run_pipeline_agent,
             "terraform_agent": self.run_terraform_agent,
-            "k8s_acr_agent":  self.run_k8s_acr_agent,
+            "k8s_acr_agent":   self.run_k8s_acr_agent,
         }
         fn = dispatch.get(agent)
         if not fn:
@@ -327,8 +380,9 @@ class Orchestrator:
     or supplied directly. Wires LLM + Agents + GitHub CLI together.
     """
 
-    def __init__(self):
-        self.logger  = SessionLogger()
+    def __init__(self, event_listener=None):
+        self.event_listener = event_listener
+        self.logger  = SessionLogger(event_listener=event_listener)
         self.client  = _gemini_client()
         self.ctx     = {}   # shared context dict passed between steps
         self.gh      = GitHubCLI(logger=self.logger)
@@ -366,9 +420,15 @@ class Orchestrator:
             print(f"  Reason: {reason}")
             print(f"{'─'*65}")
 
+            if self.event_listener:
+                self.event_listener({"type": "step_start", "step": step})
+
             self.logger.log(f"Step {step_num} start: {agent}", detail=step.get("args"))
             ok = self.runner.run_step(step)
             outcomes.append({"step": step_num, "agent": agent, "success": ok})
+
+            if self.event_listener:
+                self.event_listener({"type": "step_end", "step": step, "success": ok})
 
             if not ok:
                 all_ok = False
@@ -396,7 +456,10 @@ class Orchestrator:
         print(f"  ⏱  Total time: {elapsed}s")
         print("═" * 65)
 
-        return {"success": all_ok, "outcomes": outcomes, "elapsed_sec": elapsed}
+        res = {"success": all_ok, "outcomes": outcomes, "elapsed_sec": elapsed, "context": self.ctx}
+        if self.event_listener:
+            self.event_listener({"type": "plan_complete", "result": res})
+        return res
 
     def _try_recover(self, failed_step: dict) -> bool:
         """

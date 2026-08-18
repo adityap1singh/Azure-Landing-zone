@@ -36,6 +36,13 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Bootstrap
 # ---------------------------------------------------------------------------
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -138,8 +145,8 @@ Respond ONLY with a JSON object inside ```json ... ```:
 ```
 """
     try:
-        resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        raw = resp.text.strip()
+        from llm_client import generate_text_with_retry
+        raw = generate_text_with_retry(client, prompt)
         if "```json" in raw:
             json_str = raw.split("```json")[1].split("```")[0].strip()
         elif "```" in raw:
@@ -346,8 +353,8 @@ def run_deploy(env: str, dry_run: bool, client: genai.Client, max_retries: int):
         print("\n[Terraform Agent] Consulting Gemini for error rectification…")
         prompt = build_deploy_fix_prompt(error_text, env_dir)
         try:
-            resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-            raw = resp.text.strip()
+            from llm_client import generate_text_with_retry
+            raw = generate_text_with_retry(client, prompt)
             if "```json" in raw:
                 json_str = raw.split("```json")[1].split("```")[0].strip()
             elif "```" in raw:
@@ -376,6 +383,47 @@ def run_deploy(env: str, dry_run: bool, client: genai.Client, max_retries: int):
     return False
 
 
+class TerraformAgent:
+    """
+    Programmatic interface for the Orchestrator and external tools.
+    """
+
+    def __init__(self, dry_run: bool = False):
+        self.dry_run = dry_run
+        self.client = get_gemini_client()
+
+    def run(self, args: dict = None) -> bool:
+        args = args or {}
+        env = args.get("env", "dev")
+        dry_run = args.get("dry_run", self.dry_run)
+        audit_only = args.get("audit_only", False)
+        max_retries = int(args.get("max_retries", DEFAULT_MAX_RETRIES))
+
+        print("=" * 65)
+        print("  Terraform Agent — Audit + Deploy + Auto-Fix")
+        print(f"  Environment : {env}")
+        print(f"  Dry Run     : {dry_run}")
+        print(f"  Audit Only  : {audit_only}")
+        print(f"  Max Retries : {max_retries}")
+        print("=" * 65)
+
+        # Phase 1 — Audit
+        audit_results = run_audit(dry_run, self.client)
+
+        # Phase 2 — Auto-Fix
+        apply_audit_fixes(audit_results, dry_run)
+
+        # Phase 3+4 — Deploy + Error-Rectify-Rerun
+        if not audit_only:
+            success = run_deploy(env, dry_run, self.client, max_retries)
+        else:
+            print("\n[INFO] --audit-only flag set. Skipping deploy.")
+            success = True
+
+        print("\n[Terraform Agent] Done.")
+        return success
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -402,30 +450,16 @@ def main():
     )
     args = parser.parse_args()
 
-    print("=" * 65)
-    print("  Terraform Agent — Audit + Deploy + Auto-Fix")
-    print(f"  Environment : {args.env}")
-    print(f"  Dry Run     : {args.dry_run}")
-    print(f"  Audit Only  : {args.audit_only}")
-    print(f"  Max Retries : {args.max_retries}")
-    print("=" * 65)
-
-    client = get_gemini_client()
-
-    # Phase 1 — Audit
-    audit_results = run_audit(args.dry_run, client)
-
-    # Phase 2 — Auto-Fix
-    apply_audit_fixes(audit_results, args.dry_run)
-
-    # Phase 3+4 — Deploy + Error-Rectify-Rerun
-    if not args.audit_only:
-        run_deploy(args.env, args.dry_run, client, args.max_retries)
-    else:
-        print("\n[INFO] --audit-only flag set. Skipping deploy.")
-
-    print("\n[Terraform Agent] Done.")
+    agent = TerraformAgent(dry_run=args.dry_run)
+    success = agent.run({
+        "env": args.env,
+        "dry_run": args.dry_run,
+        "audit_only": args.audit_only,
+        "max_retries": args.max_retries,
+    })
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
     main()
+
