@@ -126,32 +126,7 @@ python ai_agents/deploy_cli.py --interactive
 
 ---
 
-## ⚙️ Configuration (`ai_agents/.env`)
 
-Configure your credentials in `ai_agents/.env`:
-
-```ini
-# Google Gemini API
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Azure Service Principal
-AZURE_SUBSCRIPTION_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CLIENT_SECRET=your_client_secret_here
-
-# Azure Resources
-RESOURCE_GROUP=rg-landing-zone-dev
-ACR_NAME=myacr
-ACR_LOGIN_SERVER=myacr.azurecr.io
-AKS_CLUSTER_NAME=aks-dev-cluster
-
-# GitHub (Pipeline Agent)
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-GITHUB_REPOSITORY=owner/Azure-Landing-zone
-```
-
----
 
 ## 🧪 Verification & Testing
 
