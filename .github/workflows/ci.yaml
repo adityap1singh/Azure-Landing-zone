@@ -34,6 +34,10 @@ jobs:
       runs-on: ubuntu-latest
       needs: source-code-validation
 
+      defaults:
+        run:
+          working-directory: ./Terraform/environment/dev
+
       steps:
 
       - name: checkout code
@@ -74,11 +78,11 @@ jobs:
 
       - name: terraform init
         run: terraform init
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        
 
       - name: terraform validate
         run: terraform validate
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+       
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
@@ -89,7 +93,7 @@ jobs:
         run: |
            tflint --init
            tflint --minimum-failure-severity=error
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12
