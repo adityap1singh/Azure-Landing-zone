@@ -22,15 +22,4 @@ resource "azurerm_resource_group" "rg" {
   )
 }
 
-# Management Lock — prevent accidental deletion of resource groups
-# Override with lock_level = "none" in tfvars to disable for a specific RG
-resource "azurerm_management_lock" "rg_lock" {
-  for_each = {
-    for k, v in var.rg_details : k => v
-    if lookup(v, "enable_lock", true)
-  }
-  name       = "lock-${each.value.name}"
-  scope      = azurerm_resource_group.rg[each.key].id
-  lock_level = "CanNotDelete"
-  notes      = "Managed by Terraform — Azure Landing Zone. Remove lock before destroying."
-}
+
