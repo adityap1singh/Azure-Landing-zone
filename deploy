@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Azure AI Single-Command Deployer Launcher
+# Usage:
+#   ./deploy "deploy a python fastapi app to dev"
+#   ./deploy --interactive
+#   ./deploy --web
+#   ./deploy --dry-run "deploy everything"
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+python3 "$DIR/ai_agents/deploy_cli.py" "$@" || python "$DIR/ai_agents/deploy_cli.py" "$@"

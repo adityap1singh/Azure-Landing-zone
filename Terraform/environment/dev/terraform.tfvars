@@ -9,10 +9,7 @@ rg_details = {
     location = "westus"
   }
 
-  rg3 = {
-    name     = "rg_rg_rg3"
-    location = "centralindia"
-  }
+
 }
 
 
@@ -92,12 +89,6 @@ pip_details = {
     allocation = "Static"
   }
 
-    pipm1 = {
-    name       = "pip121"
-    location   = "eastus"
-    resource   = "rg_rg_rg1-aditya"
-    allocation = "Static"
-}
 }
 
 network_details = {
@@ -114,7 +105,7 @@ virtual_machine = {
   vm = {
     name       = "VM-Linux-frontend"
     resource   = "rg_rg_rg1-aditya"
-    vm_size    = "Standard_D2s_v3"
+    vm_size    = "Standard_D2s_v7"
     location   = "eastus"
     subnet_id  = "subnet-dev1"
     network_id = "nic1"
@@ -123,7 +114,7 @@ virtual_machine = {
   vm1 = {
     name       = "VM-linux-backend"
     resource   = "rg_rg_rg1-aditya"
-    vm_size    = "Standard_D2s_v3"
+    vm_size    = "Standard_D2s_v7"
     location   = "eastus"
     subnet_id  = "subnet-dev1"
     network_id = "nic1"
@@ -141,13 +132,13 @@ acr_details = {
 }
 
 aks_details = {
-aks1 = {
-  name                = "aks-dev-cluster"
-  resource_group_name = "rg_rg_rg1-aditya"
-  location            = "eastus"
-  dns_prefix          = "aksdevcluster"
-  node_pool_name      = "default"
-  node_count          = 1
-  vm_size             = "Standard_D2s_v3"
-}
+  aks1 = {
+    name                = "aks-dev-cluster"
+    resource_group_name = "rg_rg_rg1-aditya"
+    location            = "eastus"
+    dns_prefix          = "aksdevcluster"
+    node_pool_name      = "default"
+    node_count          = 2
+    vm_size             = "Standard_D2s_v7"
+  }
 }
