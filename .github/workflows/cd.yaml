@@ -118,7 +118,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: OWASP ZAP Baseline Scan
+      - name: OWASP ZAP Baseline Scan (DAST)
         uses: zaproxy/action-baseline@v0.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

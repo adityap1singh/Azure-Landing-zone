@@ -24,9 +24,11 @@ jobs:
            distribution: 'temurin'
            java-version: '17'
 
-        - name: sonar qube scan
+        - name: sonar qube scan(SCAT)
           if: false
           uses: SonarSource/sonarqube-scan-action@v8.2.1
+          with:
+            working-directory: ./Terraform/environment/dev
           
         
 
@@ -42,7 +44,7 @@ jobs:
       - name: docker build
         run: docker build -t landingzone:latest .
 
-      - name: docker scan trivy
+      - name: docker scan trivy (SCA)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: landingzone:latest
@@ -74,11 +76,11 @@ jobs:
 
       - name: terraform init
         run: terraform init
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        working-directory: ./Terraform/environment/dev
 
       - name: terraform validate
         run: terraform validate
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        working-directory: ./Terraform/environment/dev
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
@@ -89,24 +91,24 @@ jobs:
         run: |
            tflint --init
            tflint --minimum-failure-severity=error
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        working-directory: ./Terraform/
 
       - name: Checkov
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+          directory: ./Terraform/
           soft_fail: true
 
       - name: terraform plan
         if: false 
         run: terraform plan -out=tfplan
-        working-directory: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+        working-directory: ./Terraform/environment/dev
 
       - name: Atifact upload
         uses: actions/upload-artifact@v4
         with:
             name: terraform-plan
-            path: C:\AI\Azure-Landing zone\Azure-Landing-zone\Terraform\environment\dev
+            path: ./Terraform/environment/dev
 
 
 
